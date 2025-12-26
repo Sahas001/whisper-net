@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"strings"
 	"sync"
 	"syscall"
 
@@ -19,9 +20,15 @@ import (
 
 type mdnsNotifee struct {
 	host host.Host
+	name string
 }
 
-const ChatProtocol = protocol.ID("/whisper/1.0.0")
+var (
+	ChatProtocol     = protocol.ID("/whisper-net/chat/1.0.0")
+	IdentityProtocol = protocol.ID("/whisper-net/identity/1.0.0")
+)
+
+var peerNames = make(map[peerstore.ID]string)
 
 var connectedPeers sync.Map
 
@@ -40,8 +47,20 @@ func (n *mdnsNotifee) HandlePeerFound(pi peerstore.AddrInfo) {
 			connectedPeers.Delete(pi.ID)
 			return
 		}
+		sendIdentity(context.Background(), n.host, pi.ID, n.name)
 		sendMessage(context.Background(), n.host, pi.ID, "Hello from "+n.host.ID().String())
 	}()
+}
+
+func sendIdentity(ctx context.Context, h host.Host, peerID peerstore.ID, name string) error {
+	s, err := h.NewStream(ctx, peerID, IdentityProtocol)
+	if err != nil {
+		return err
+	}
+	defer s.Close()
+
+	fmt.Fprintln(s, name)
+	return nil
 }
 
 func sendMessage(ctx context.Context, h host.Host, peerID peerstore.ID, message string) error {
@@ -60,6 +79,10 @@ func sendMessage(ctx context.Context, h host.Host, peerID peerstore.ID, message 
 }
 
 func main() {
+	fmt.Println("Enter your name: ")
+	reader := bufio.NewReader(os.Stdin)
+	name, _ := reader.ReadString('\n')
+
 	node, err := libp2p.New(
 		libp2p.ListenAddrStrings("/ip4/127.0.0.1/tcp/0"),
 		libp2p.Ping(false),
@@ -68,7 +91,10 @@ func main() {
 		panic(err)
 	}
 
-	service := mdns.NewMdnsService(node, "whisper-net", &mdnsNotifee{host: node})
+	service := mdns.NewMdnsService(node, "whisper-net", &mdnsNotifee{
+		host: node,
+		name: name,
+	})
 
 	if err := service.Start(); err != nil {
 		panic(err)
@@ -83,6 +109,20 @@ func main() {
 			return
 		}
 		fmt.Printf("Received message from %s: %s", s.Conn().RemotePeer(), msg)
+	})
+
+	node.SetStreamHandler(IdentityProtocol, func(s network.Stream) {
+		defer s.Close()
+		reader := bufio.NewReader(s)
+		name, err := reader.ReadString('\n')
+		if err != nil {
+			return
+		}
+		name = strings.TrimSpace(name)
+		peerID := s.Conn().RemotePeer()
+		peerNames[peerID] = name
+
+		fmt.Printf("Peer %s identified as %q\n", peerID, name)
 	})
 
 	peerInfo := peerstore.AddrInfo{
