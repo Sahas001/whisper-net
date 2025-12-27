@@ -28,7 +28,10 @@ var (
 	IdentityProtocol = protocol.ID("/whisper-net/identity/1.0.0")
 )
 
-var peerNames = make(map[peerstore.ID]string)
+var (
+	peerNames = make(map[peerstore.ID]string)
+	peerMu    sync.RWMutex
+)
 
 var connectedPeers sync.Map
 
@@ -48,7 +51,7 @@ func (n *mdnsNotifee) HandlePeerFound(pi peerstore.AddrInfo) {
 			return
 		}
 		sendIdentity(context.Background(), n.host, pi.ID, n.name)
-		sendMessage(context.Background(), n.host, pi.ID, "Hello from "+n.host.ID().String())
+		sendMessage(context.Background(), n.host, pi.ID, "Hello from whisper-net!")
 	}()
 }
 
@@ -100,17 +103,6 @@ func main() {
 		panic(err)
 	}
 
-	node.SetStreamHandler(ChatProtocol, func(s network.Stream) {
-		defer s.Close()
-		reader := bufio.NewReader(s)
-		msg, err := reader.ReadString('\n')
-		if err != nil {
-			fmt.Println("Error reading from stream", err)
-			return
-		}
-		fmt.Printf("Received message from %s: %s", s.Conn().RemotePeer(), msg)
-	})
-
 	node.SetStreamHandler(IdentityProtocol, func(s network.Stream) {
 		defer s.Close()
 		reader := bufio.NewReader(s)
@@ -120,9 +112,29 @@ func main() {
 		}
 		name = strings.TrimSpace(name)
 		peerID := s.Conn().RemotePeer()
+		peerMu.Lock()
 		peerNames[peerID] = name
+		peerMu.Unlock()
 
 		fmt.Printf("Peer %s identified as %q\n", peerID, name)
+	})
+
+	node.SetStreamHandler(ChatProtocol, func(s network.Stream) {
+		defer s.Close()
+		reader := bufio.NewReader(s)
+		msg, err := reader.ReadString('\n')
+		peerID := s.Conn().RemotePeer()
+		peerMu.RLock()
+		name, ok := peerNames[peerID]
+		peerMu.RUnlock()
+		if !ok {
+			name = peerID.String()[:8]
+		}
+		if err != nil {
+			fmt.Println("Error reading from stream", err)
+			return
+		}
+		fmt.Printf("Received message from %s: %s", name, msg)
 	})
 
 	peerInfo := peerstore.AddrInfo{
