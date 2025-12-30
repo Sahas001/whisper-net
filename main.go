@@ -37,11 +37,16 @@ func main() {
 
 	case "client":
 		if len(os.Args) < 3 {
-			log.Fatal("Error: Client requires bootstrap address file as argument")
-		}
-		bootstrapAddr := os.Args[2]
-		if err := node.RunClientNode(ctx, bootstrapAddr); err != nil {
-			log.Fatal(err)
+			fmt.Println("Redirecting to official libp2p bootstrap node...")
+			if err := node.RunClientNode(ctx, "libp2p_bootstrap_peer.addr"); err != nil {
+				log.Fatal(err)
+			}
+		} else {
+			bootstrapAddr := os.Args[2]
+			if err := node.RunClientNode(ctx, bootstrapAddr); err != nil {
+				log.Fatal(err)
+			}
+
 		}
 	default:
 		log.Fatal("Unknown role:", role)

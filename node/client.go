@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/Sahas001/whisper-net/proto"
+	"github.com/Sahas001/whisper-net/ui"
+	"github.com/Sahas001/whisper-net/utils"
 	"github.com/libp2p/go-libp2p"
 	dht "github.com/libp2p/go-libp2p-kad-dht"
 	"github.com/libp2p/go-libp2p/core/host"
@@ -24,10 +26,6 @@ var (
 	peerMu       sync.RWMutex
 	identitySent = make(map[peerstore.ID]struct{})
 )
-
-// var bootstrapPeers = []string{
-// 	"/ip4/104.131.131.82/tcp/4001/p2p/QmaCpDMGvV2BGHeYERUEnRQAwe3N8SzbUtfsmvsqQLuvuJ",
-// }
 
 func isBootstrapPeer(bootstrapPeer []peerstore.AddrInfo, id peerstore.ID) bool {
 	for _, p := range bootstrapPeer {
@@ -81,6 +79,10 @@ func RunClientNode(ctx context.Context, bootstrapFile string) error {
 	node, err := libp2p.New(
 		libp2p.ListenAddrStrings("/ip4/0.0.0.0/tcp/0"),
 		libp2p.Ping(false),
+		libp2p.EnableAutoRelayWithStaticRelays(bootstrapPeers),
+		libp2p.EnableHolePunching(),
+		libp2p.EnableNATService(),
+		libp2p.EnableRelay(),
 	)
 	if err != nil {
 		return err
@@ -101,6 +103,27 @@ func RunClientNode(ctx context.Context, bootstrapFile string) error {
 	reader := bufio.NewReader(os.Stdin)
 	name, _ := reader.ReadString('\n')
 	name = strings.TrimSpace(name)
+	localName := name
+	if localName == "" {
+		localName = node.ID().String()[:8]
+	}
+	fmt.Printf("Your name is set to %q\n", localName)
+
+	fmt.Println("Enter room ID (Blank to generate): ")
+	roomID, _ := reader.ReadString('\n')
+	roomID = strings.TrimSpace(roomID)
+	if roomID == "" {
+		roomID = utils.GenerateRoomID()
+		fmt.Println("Generated room ID:", roomID)
+	} else {
+		fmt.Println("Using room ID:", roomID)
+	}
+
+	rendezvous := fmt.Sprintf("%s-%s", proto.Namespace, roomID)
+
+	fmt.Println("Joining room:", rendezvous)
+
+	incoming := make(chan string, 128)
 
 	for _, p := range bootstrapPeers {
 		if err := node.Connect(ctx, p); err != nil {
@@ -141,7 +164,10 @@ func RunClientNode(ctx context.Context, bootstrapFile string) error {
 			fmt.Println("Error reading from stream", err)
 			return
 		}
-		fmt.Printf("Received message from %s: %s", name, msg)
+		msg = strings.TrimSpace(msg)
+		if msg != "" {
+			incoming <- fmt.Sprintf("[%s]: %s", name, msg)
+		}
 	})
 
 	// Advertise peers
@@ -178,11 +204,43 @@ func RunClientNode(ctx context.Context, bootstrapFile string) error {
 				if isBootstrapPeer(bootstrapPeers, p.ID) {
 					continue
 				}
+				pi := p
+				if len(pi.Addrs) == 0 {
+					lookupCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+					info, err := kademliaDHT.FindPeer(lookupCtx, p.ID)
+					cancel()
+					if err != nil {
+						continue
+					}
+					pi = info
+				}
 				go connectAndSendIdentity(ctx, node, p, name)
 			}
 			time.Sleep(5 * time.Second)
 		}
 	}()
+	sendMessage := func(text string) error {
+		peerMu.RLock()
+		peers := make([]peerstore.ID, 0, len(peerNames))
+		for id := range peerNames {
+			peers = append(peers, id)
+		}
+		peerMu.RUnlock()
+		if len(peers) == 0 {
+			return fmt.Errorf("no peers in room yet")
+		}
+		var lastErr error
+		for _, pid := range peers {
+			if err := proto.SendMessage(ctx, node, pid, fmt.Sprintf("%s: %s", localName, text)); err != nil {
+				lastErr = err
+			}
+		}
+		return lastErr
+	}
+
+	if err := ui.RunChatUI(ctx, localName, roomID, incoming, sendMessage); err != nil {
+		return err
+	}
 
 	<-ctx.Done()
 	return node.Close()
