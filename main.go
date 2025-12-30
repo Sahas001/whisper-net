@@ -48,6 +48,14 @@ func main() {
 			}
 
 		}
+	case "relay":
+		addrFile := "relay.addr"
+		addr, err := node.RunRelayNode(ctx, 4002, addrFile)
+		if err != nil {
+			log.Fatal(err)
+		}
+		fmt.Println("Relay node running at:", addr)
+		<-ctx.Done()
 	default:
 		log.Fatal("Unknown role:", role)
 	}

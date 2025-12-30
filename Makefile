@@ -7,6 +7,9 @@ bootstrap-peer:
 client-peer:
 	./bin/app client ./bootstrap_peer.addr
 
+relay:
+	./bin/app relay
+
 clean:
 	rm -rf bin/
 

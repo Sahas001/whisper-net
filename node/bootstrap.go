@@ -16,7 +16,9 @@ import (
 func RunBootstrapPeer(ctx context.Context, listenHost string, port int) (string, error) {
 	addrStr := fmt.Sprintf("/ip4/%s/tcp/%d", listenHost, port)
 
-	host, err := libp2p.New(libp2p.ListenAddrStrings(addrStr))
+	host, err := libp2p.New(libp2p.ListenAddrStrings(addrStr),
+		libp2p.EnableRelayService(),
+	)
 	if err != nil {
 		return "", err
 	}
@@ -36,7 +38,7 @@ func RunBootstrapPeer(ctx context.Context, listenHost string, port int) (string,
 			if err == nil {
 				fmt.Println("Bootstrap advertised, TTL:", ttl)
 			}
-			time.Sleep(5 * time.Second)
+			time.Sleep(10 * time.Second)
 		}
 	}()
 
