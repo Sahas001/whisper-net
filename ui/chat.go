@@ -54,9 +54,10 @@ type chatStyles struct {
 
 func newChatModel(localName, room string, incoming <-chan InboundMsg, send func(string) error, peers func() (int, []string)) chatModel {
 	ti := textinput.New()
-	ti.Placeholder = "Type message and press Enter"
+	ti.Placeholder = "Type a message"
 	ti.Focus()
 	ti.Prompt = "> "
+	ti.Width = 50
 
 	styles := chatStyles{
 		header: lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("13")),
@@ -153,14 +154,11 @@ func (m chatModel) View() string {
 
 	noticeView := ""
 	if m.notice != "" && time.Since(m.noticeAt) < 8*time.Second {
-		noticeBox := m.styles.box.Copy().BorderForeground(lipgloss.Color("51"))
+		noticeBox := m.styles.box.BorderForeground(lipgloss.Color("51"))
 		noticeView = noticeBox.Render(m.styles.notice.Render(m.notice))
 	}
 
-	boxWidth := m.vp.Width
-	if boxWidth < 30 {
-		boxWidth = 30
-	}
+	boxWidth := max(m.vp.Width, 30)
 
 	statusLine := ""
 	if m.status != "" {
@@ -214,14 +212,8 @@ func (m *chatModel) resizeViewport(msg tea.WindowSizeMsg) {
 	statusH := 2 // status box plus spacing
 	helpH := 1
 	extra := 2 // spacing between sections
-	availH := msg.Height - (headerH + promptH + statusH + helpH + extra)
-	if availH < 3 {
-		availH = 3
-	}
-	availW := msg.Width - borderPad
-	if availW < 30 {
-		availW = 30
-	}
+	availH := max(msg.Height-(headerH+promptH+statusH+helpH+extra), 3)
+	availW := max(msg.Width-borderPad, 30)
 	m.vp.Width = availW
 	m.vp.Height = availH
 	m.syncViewport()

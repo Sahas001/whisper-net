@@ -28,14 +28,14 @@ var (
 	identitySent = make(map[peerstore.ID]struct{})
 )
 
-func loadRelayAddr(file string) (multiaddr.Multiaddr, error) {
-	data, err := os.ReadFile(file)
-	if err != nil {
-		return nil, err
-	}
-	addrStr := strings.TrimSpace(string(data))
-	return multiaddr.NewMultiaddr(addrStr)
-}
+// func loadRelayAddr(file string) (multiaddr.Multiaddr, error) {
+// 	data, err := os.ReadFile(file)
+// 	if err != nil {
+// 		return nil, err
+// 	}
+// 	addrStr := strings.TrimSpace(string(data))
+// 	return multiaddr.NewMultiaddr(addrStr)
+// }
 
 func isBootstrapPeer(bootstrapPeer []peerstore.AddrInfo, id peerstore.ID) bool {
 	for _, p := range bootstrapPeer {
@@ -108,11 +108,11 @@ func RunClientNode(ctx context.Context, bootstrapFile string) error {
 	bootstrapPeers := loadBootstrapPeers(bootstrapFile)
 
 	// Load relay address if available
-	var relayMultiaddr multiaddr.Multiaddr
-	if rma, err := loadRelayAddr("relay.addr"); err == nil {
-		relayMultiaddr = rma
-		fmt.Println("Using relay:", relayMultiaddr)
-	}
+	// var relayMultiaddr multiaddr.Multiaddr
+	// if rma, err := loadRelayAddr("relay.addr"); err == nil {
+	// 	relayMultiaddr = rma
+	// 	fmt.Println("Using relay:", relayMultiaddr)
+	// }
 
 	node, err := libp2p.New(
 		libp2p.ListenAddrStrings("/ip4/0.0.0.0/tcp/0"),
@@ -126,16 +126,16 @@ func RunClientNode(ctx context.Context, bootstrapFile string) error {
 	}
 
 	// If relay address exists, connect to it
-	if relayMultiaddr != nil {
-		pi, err := peerstore.AddrInfoFromP2pAddr(relayMultiaddr)
-		if err == nil {
-			if err := node.Connect(ctx, *pi); err != nil {
-				fmt.Println("Failed to connect to relay:", err)
-			} else {
-				fmt.Println("Connected to relay:", pi.ID)
-			}
-		}
-	}
+	// if relayMultiaddr != nil {
+	// 	pi, err := peerstore.AddrInfoFromP2pAddr(relayMultiaddr)
+	// 	if err == nil {
+	// 		if err := node.Connect(ctx, *pi); err != nil {
+	// 			fmt.Println("Failed to connect to relay:", err)
+	// 		} else {
+	// 			fmt.Println("Connected to relay:", pi.ID)
+	// 		}
+	// 	}
+	// }
 
 	kademliaDHT, err := dht.New(ctx, node, dht.Mode(dht.ModeAutoServer), dht.BootstrapPeers(bootstrapPeers...))
 	if err != nil {
@@ -226,6 +226,7 @@ func RunClientNode(ctx context.Context, bootstrapFile string) error {
 		peerID := s.Conn().RemotePeer()
 		peerMu.RLock()
 		name, ok := peerNames[peerID]
+		_ = name
 		peerMu.RUnlock()
 		if !ok {
 			name = peerID.String()[:8]
@@ -236,7 +237,7 @@ func RunClientNode(ctx context.Context, bootstrapFile string) error {
 		}
 		msg = strings.TrimSpace(msg)
 		if msg != "" {
-			incoming <- ui.InboundMsg{Text: fmt.Sprintf("%s: %s", name, msg), Kind: ui.MsgPeer}
+			incoming <- ui.InboundMsg{Text: fmt.Sprintf("%s", msg), Kind: ui.MsgPeer}
 		}
 	})
 
